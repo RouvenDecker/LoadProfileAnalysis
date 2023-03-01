@@ -1,5 +1,6 @@
 from sys import exit
 import time
+import argparse
 
 import pandas as pd
 import numpy as np
@@ -9,6 +10,23 @@ import holidays as hd
 from pathlib import Path
 import sqlite3
 import seaborn as sns
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--csv",
+                    help="want to generate csv output? (bool)",
+                    type=lambda x: True if x == "True" else False,
+                    required=False
+                    )
+
+parser.add_argument("--year",
+                    help="want to add the Year for output diagramms? (str)",
+                    type=str,
+                    required=False)
+args = parser.parse_args()
+USE_CSV: bool = args.csv
+YEAR: str = args.year
+
 
 # used directorys
 CWD = Path.cwd()
@@ -107,9 +125,9 @@ def is_empty(table_name: str) -> bool:
     return True if fetch.fetchone() == (0,) else False
 
 
-def write_to_table(Frame: pd.DataFrame,
-                   table_name: str,
-                   indexname: str = "") -> None:
+def write_to_db(Frame: pd.DataFrame,
+                table_name: str,
+                indexname: str = "") -> None:
     '''
     writes the dataframe in the destination SQL-Table
 
@@ -202,7 +220,7 @@ def add_localtime_to_input(df: pd.DataFrame) -> None:
     cursor.execute("DELETE FROM input")
     CONN.commit()
 
-    write_to_table(df, "input", indexname='Timestamp_in_UTC')
+    write_to_db(df, "input", indexname='Timestamp_in_UTC')
 
 
 def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
@@ -232,10 +250,12 @@ def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
 
     if np.sum(df["Energy_in_kWh"] < 0):
 
-        print("negative Values in InputData.")
-        print("Do u want to change invalids to 0 an proceed?\n")
-        print("""not changing will leave the invalid in the dataset""")
-        print("YES: 1, NO: some other Key")
+        error_msg = """
+            negative Values in InputData.\n
+            Do u want to change invalids to 0 an proceed?\n
+            not changing will leave the invalid in the dataset\n
+            YES: 1, NO: some other Key"""
+        print(error_msg)
         decission = input()
         if decission == "1":
             df.loc[df["Energy_in_kWh"] < 0, ["Energy_in_kWh"]] = 0
@@ -263,7 +283,7 @@ def execute_query(sql: str) -> None:
     print("done")
 
 
-def yearly_calculation(year: str) -> None:
+def yearly_calculation(year: str = "...") -> None:
     '''
     caluclate the yearly Energy consumption and create tables
 
@@ -279,13 +299,14 @@ def yearly_calculation(year: str) -> None:
     year_in_GWh = pd.DataFrame(data={"Consumption_in_GWh": sum}, index=[year])
     year_in_GWh.index.name = "Year"
 
-    if not Path.exists(OUTPUT_DIR / "yearly_consumption_in_GWh.csv"):
-        year_in_GWh.to_csv(OUTPUT_DIR / "yearly_consumption_in_GWh.csv",
-                           index=True,
-                           sep=';'
-                           )
+    if USE_CSV:
+        if not Path.exists(OUTPUT_DIR / "yearly_consumption_in_GWh.csv"):
+            year_in_GWh.to_csv(OUTPUT_DIR / "yearly_consumption_in_GWh.csv",
+                               index=True,
+                               sep=';'
+                               )
 
-    write_to_table(year_in_GWh, "YearlyConsumption", indexname="Year")
+    write_to_db(year_in_GWh, "YearlyConsumption", indexname="Year")
 
 
 def monthly_calculation() -> None:
@@ -310,13 +331,14 @@ def monthly_calculation() -> None:
     rounded = month_in_GWh["Energy_in_GWh"].apply(lambda a: round(a, 2))
     month_in_GWh["Energy_in_GWh"] = rounded
 
-    if not Path.exists(OUTPUT_DIR / "monthly_consumption_in_GWh.csv"):
-        month_in_GWh.to_csv(OUTPUT_DIR / "monthly_consumption_in_GWh.csv",
-                            index=True,
-                            sep=';'
-                            )
+    if USE_CSV:
+        if not Path.exists(OUTPUT_DIR / "monthly_consumption_in_GWh.csv"):
+            month_in_GWh.to_csv(OUTPUT_DIR / "monthly_consumption_in_GWh.csv",
+                                index=True,
+                                sep=';'
+                                )
 
-    write_to_table(month_in_GWh, "MonthlyConsumption", indexname="Month")
+    write_to_db(month_in_GWh, "MonthlyConsumption", indexname="Month")
 
 
 def monthly_maximum(frame: pd.DataFrame) -> None:
@@ -333,13 +355,14 @@ def monthly_maximum(frame: pd.DataFrame) -> None:
     month_max["Energy_in_kWh"] = rounded
     month_max.index.name = "Month"
 
-    if not Path.exists(OUTPUT_DIR / "monthly_maximum_Energy_in_kWh.csv"):
-        month_max.to_csv(OUTPUT_DIR / "monthly_maximum_Energy_in_kWh.csv",
-                         sep=';',
-                         index=True
-                         )
+    if USE_CSV:
+        if not Path.exists(OUTPUT_DIR / "monthly_maximum_Energy_in_kWh.csv"):
+            month_max.to_csv(OUTPUT_DIR / "monthly_maximum_Energy_in_kWh.csv",
+                             sep=';',
+                             index=True
+                             )
 
-    write_to_table(month_max, "MaxEnergyPerMonth", indexname="Hours")
+    write_to_db(month_max, "MaxEnergyPerMonth", indexname="Hours")
 
 
 def calculate_KPIs(year: str) -> None:
@@ -461,17 +484,18 @@ def median_for_ReferenceDays(df: pd.DataFrame) -> None:
     combined_ReferenceDays = pd.concat([work_days, holidays, saturdays],
                                        axis=1
                                        )
+    if USE_CSV:
+        if not Path.exists(OUTPUT_DIR / "median_Referencedays.csv"):
+            combined_ReferenceDays.to_csv(
+                OUTPUT_DIR / "median_Referencedays.csv",
+                sep=';',
+                decimal='.'
+            )
 
-    if not Path.exists(OUTPUT_DIR / "median_Referencedays.csv"):
-        combined_ReferenceDays.to_csv(OUTPUT_DIR / "median_Referencedays.csv",
-                                      sep=';',
-                                      decimal='.'
-                                      )
-
-    write_to_table(combined_ReferenceDays,
-                   "MedianReferenceDays",
-                   indexname="Hours"
-                   )
+    write_to_db(combined_ReferenceDays,
+                "MedianReferenceDays",
+                indexname="Hours"
+                )
 
 
 def format_ReferenceDay(frame: pd.DataFrame,
@@ -499,7 +523,7 @@ def format_ReferenceDay(frame: pd.DataFrame,
     return frame
 
 
-def pretty_time_h(time : int) -> str:
+def pretty_time_h(time: int) -> str:
     '''
     return a number (0-99) as Timestring
     e.g: 5 -> 05:00
@@ -516,8 +540,7 @@ def pretty_time_h(time : int) -> str:
     '''
     if time < 10:
         formated = "0"
-        time = str(time)
-        return time.join([formated, ':00'])
+        return str(time).join([formated, ':00'])
     else:
         return str(time) + ':00'
 
@@ -556,12 +579,15 @@ def plot_ReferenceDay_boxplots(year: str) -> None:
     axes[0].set_xlabel("workdays")
     axes[0].set_xticks([])
     axes[0].set_ylabel("Energy in kWh")
+
     axes[1].boxplot(saturdays)
     axes[1].set_xlabel("saturdays")
     axes[1].set_xticks([])
+
     axes[2].boxplot(holidays)
     axes[2].set_xlabel("holidays")
     axes[2].set_xticks([])
+
     axes[3].boxplot(input)
     axes[3].set_xlabel("total")
     axes[3].set_xticks([])
@@ -628,7 +654,7 @@ def main():
     '''
     Script to Analyse a Yearly Energy Load Profile.
     '''
-    YEAR = "2022"
+
     build_dir()
     build_database()
     df = read_input()

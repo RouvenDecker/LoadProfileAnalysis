@@ -1,11 +1,12 @@
+from sys import exit
+import time
+
 import pandas as pd
 import numpy as np
 import datetime as dt
 import matplotlib.pyplot as plt
 import holidays as hd
 from pathlib import Path
-import time
-from sys import exit
 import sqlite3
 import seaborn as sns
 
@@ -40,7 +41,7 @@ def build_dir() -> None:
     plt.style.use(INPUT_DIR / "ibt.mplstyle")
 
 
-def check_file_existence(p: Path):
+def check_file_existence(p: Path) -> None:
     '''
     check if the given File exists
 
@@ -107,7 +108,7 @@ def write_to_table(Frame: pd.DataFrame,
                    table_name: str,
                    indexname: str = "") -> None:
     '''
-    writes the dataframe in the destination table
+    writes the dataframe in the destination SQL-Table
 
     Parameters
     ----------
@@ -218,11 +219,12 @@ def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
     data = np.array([1, 2, 3, 4]).reshape(2, 2)
     day_1 = "01.01.2022 00:00:00"
     day_365 = "31.12.2022 23:00:00"
+
     showcase = pd.DataFrame(index=[day_1, day_365],
                             columns=["Timestamp_in_Hour_resolution", "Energy"],
                             data=data)
 
-    error_msg = f"Wrong Data Format : use this formating\n {showcase}"
+    error_msg = f"Wrong Data Format: use this formating\n {showcase}"
     assert df.shape == (8760, 2), error_msg
 
     if np.sum(df["Energy_in_kWh"] < 0):
@@ -231,8 +233,8 @@ def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
         print("Do u want to change invalids to 0 an proceed?\n")
         print("""not changing will leave the invalid in the dataset""")
         print("YES: 1, NO: some other Key")
-        dec = input()
-        if dec == "1":
+        decission = input()
+        if decission == "1":
             df.loc[df["Energy_in_kWh"] < 0, ["Energy_in_kWh"]] = 0
             return df
         else:
@@ -296,8 +298,8 @@ def monthly_calculation() -> None:
 
     monthly_maximum(month_in_GWh)
 
-    grp_by_conditon = month_in_GWh.index.month
-    month_in_GWh = (month_in_GWh.groupby(grp_by_conditon).sum() / 1000)
+    group_by_conditon = month_in_GWh.index.month
+    month_in_GWh = (month_in_GWh.groupby(group_by_conditon).sum() / 1000)
     month_in_GWh.index.name = "Month"
     month_in_GWh.rename(columns={"Energy_in_kWh": "Energy_in_GWh"},
                         inplace=True
@@ -428,18 +430,18 @@ def median_for_ReferenceDays(df: pd.DataFrame) -> None:
         output as ReferenceDays
     '''
 
-    remap = {'Monday': 'working_day',
-             'Tuesday': 'working_day',
-             'Wednesday': 'working_day',
-             'Thursday': 'working_day',
-             'Friday': 'working_day',
+    remap = {'Monday': 'workday',
+             'Tuesday': 'workday',
+             'Wednesday': 'workday',
+             'Thursday': 'workday',
+             'Friday': 'workday',
              'Saturday': 'Saturday',
              'Sunday': 'holiday',
              'holiday': 'holiday'
              }
 
     df["weekday"] = df["weekday"].apply(lambda day: remap[day])
-    work_days = df[df["weekday"] == 'working_day']
+    work_days = df[df["weekday"] == 'workday']
     holidays = df[df["weekday"] == 'holiday']
     saturdays = df[df["weekday"] == 'Saturday']
 
@@ -494,15 +496,15 @@ def format_ReferenceDay(frame: pd.DataFrame,
     return frame
 
 
-def pretty_time_h(time) -> str:
+def pretty_time_h(time : int) -> str:
     '''
     return a number (0-99) as Timestring
     e.g: 5 -> 05:00
 
     Parameters
     ----------
-    time : _type_
-        hours as integer
+    time : int
+        hours
 
     Returns
     -------
@@ -589,7 +591,7 @@ def create_Heatmap(year: str) -> None:
     '''
     create Heatmap for Energy consumption
     x - axis : Days
-    x - axis : Hours
+    y - axis : Hours
 
     Parameters
     ----------
@@ -606,10 +608,9 @@ def create_Heatmap(year: str) -> None:
     values = input.values.reshape(365, 24)
     values = values.T
 
-    grid = pd.DataFrame(index=[y for y in range(0, 24)],
-                        columns=[x for x in range(1, 366)],
-                        data=values
-                        )
+    hours = [y for y in range(0, 24)]
+    days = [x for x in range(1, 366)]
+    grid = pd.DataFrame(index=hours, columns=days, data=values)
 
     fig, ax = plt.subplots()
     fig.suptitle(year)

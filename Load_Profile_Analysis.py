@@ -15,14 +15,14 @@ import seaborn as sns
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--csv",
-    help="want to generate csv output? (bool)",
+    help="want to generate csv output? (--csv True)",
     type=lambda x: True if x == "True" else False,
     required=False
 )
 
 parser.add_argument(
     "--year",
-    help="want to add the Year for output diagramms? (str)",
+    help="want to add the Year for output diagramms? (--year YYYY)",
     type=str,
     required=False
 )
@@ -323,34 +323,34 @@ def monthly_calculation() -> None:
     '''
     calculate the monthly indicators and create tables
     '''
-    month_in_GWh = pd.read_sql(
+    month_in_MWh = pd.read_sql(
         "SELECT Timestamp_in_UTC, Energy_in_kWh FROM input",
         CONN,
         index_col="Timestamp_in_UTC",
         parse_dates=["Timestamp_in_UTC"]
     )
 
-    monthly_maximum(month_in_GWh)
+    monthly_maximum(month_in_MWh)
 
-    group_by_conditon = month_in_GWh.index.month
-    month_in_GWh = (month_in_GWh.groupby(group_by_conditon).sum() / 1000)
-    month_in_GWh.index.name = "Month"
-    month_in_GWh.rename(
-        columns={"Energy_in_kWh": "Energy_in_GWh"},
+    group_by_conditon = month_in_MWh.index.month
+    month_in_MWh = (month_in_MWh.groupby(group_by_conditon).sum() / 1000)
+    month_in_MWh.index.name = "Month"
+    month_in_MWh.rename(
+        columns={"Energy_in_kWh": "Energy_in_MWh"},
         inplace=True
     )
-    rounded = month_in_GWh["Energy_in_GWh"].apply(lambda a: round(a, 2))
-    month_in_GWh["Energy_in_GWh"] = rounded
+    rounded = month_in_MWh["Energy_in_MWh"].apply(lambda a: round(a, 2))
+    month_in_MWh["Energy_in_MWh"] = rounded
 
     if USE_CSV:
-        if not Path.exists(OUTPUT_DIR / "monthly_consumption_in_GWh.csv"):
-            month_in_GWh.to_csv(
-                OUTPUT_DIR / "monthly_consumption_in_GWh.csv",
+        if not Path.exists(OUTPUT_DIR / "monthly_consumption_in_MWh.csv"):
+            month_in_MWh.to_csv(
+                OUTPUT_DIR / "monthly_consumption_in_MWh.csv",
                 index=True,
                 sep=';'
             )
 
-    write_to_db(month_in_GWh, "MonthlyConsumption", indexname="Month")
+    write_to_db(month_in_MWh, "MonthlyConsumption", indexname="Month")
 
 
 def monthly_maximum(frame: pd.DataFrame) -> None:
@@ -436,7 +436,7 @@ def create_weekday_table(country: str = "DE") -> pd.DataFrame:
     return df
 
 
-def get_hours_per_day(given_day) -> pd.Series:
+def get_hours_per_day(given_day: pd.DatetimeIndex) -> pd.Series:
     '''
     return the hourly Timestamps from 00:00 till 23:00 of given day
 

@@ -45,7 +45,7 @@ class sqlite_handler:
         cursor = self._Connector.cursor()
         query = cursor.execute(sql)
         fetches = query.fetchall()
-        if output:  # testen ob der outpur string richtig formatiert ist
+        if output:  # option still untested
             output_str : str = ""
             for fetch in fetches:
                 output_str += fetch

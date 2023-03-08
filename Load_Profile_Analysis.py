@@ -11,6 +11,7 @@ from pathlib import Path
 import sqlite3
 import seaborn as sns
 
+from handling import sqlite_handler
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -39,10 +40,14 @@ INPUT_DIR = CWD / "input"
 OUTPUT_DIR = CWD / "output"
 INPUT_FILE = INPUT_DIR / "Load_Profile_Analysis.csv"
 
+
+sql_handler = sqlite_handler("database.db",
+                             WORKING_DATA,
+                             INPUT_DIR / "build_database.sql")
+
+
 if not Path.exists(WORKING_DATA):
     Path.mkdir(WORKING_DATA, exist_ok=True)
-
-CONN = sqlite3.connect(WORKING_DATA / "database.db")
 
 DAY_MAPPING = {0: 'Monday',
                1: 'Tuesday',
@@ -80,17 +85,6 @@ def check_file_existence(p: Path) -> None:
         exit(f"ERROR: file:{p.name} does not exist in {p.parent}")
 
 
-def build_database() -> None:
-    '''
-    perform all querys necessary to build the database
-    '''
-    cursor = CONN.cursor()
-    with open(INPUT_DIR / "build_database.sql", "r") as f:
-        query = f.read()
-        cursor.executescript(query)
-        CONN.commit()
-
-
 def stof(series: pd.Series) -> pd.Series:
     '''
     casting sqlite_strings to floats ,
@@ -109,48 +103,6 @@ def stof(series: pd.Series) -> pd.Series:
     series = series.apply(lambda a: a.replace(',', '.'))
     series = pd.to_numeric(series, downcast='float')
     return series
-
-
-def is_empty(table_name: str) -> bool:
-    '''
-    check if or if not a table is empty
-
-    Parameters
-    ----------
-    table_name : str
-        table to check
-
-    Returns
-    -------
-    bool
-        empty ? yes -> true , else false
-    '''
-    cursor = CONN.cursor()
-    fetch = cursor.execute(f'SELECT COUNT(*) FROM {table_name}')
-    return True if fetch.fetchone() == (0,) else False
-
-
-def write_to_db(Frame: pd.DataFrame,
-                table_name: str,
-                indexname: str = "") -> None:
-    '''
-    writes the dataframe in the destination SQL-Table
-
-    Parameters
-    ----------
-    Frame : pd.DataFrame
-        Frame to write
-    table_name : str
-        target_frame
-    '''
-    if is_empty(table_name):
-        Frame.to_sql(
-            table_name,
-            CONN,
-            if_exists='replace',
-            index=True,
-            index_label=indexname
-        )
 
 
 def datetime_from_utc_to_local(utc_datetime: dt.datetime) -> dt.datetime:
@@ -190,7 +142,6 @@ def read_input() -> pd.DataFrame:
         parse_dates=["Timestamp in UTC"],
         date_parser=lambda stamp: dt.datetime.strptime(stamp, '%d.%m.%Y %H:%M')
     )
-
     return df
 
 
@@ -215,7 +166,7 @@ def add_localtime_to_input(df: pd.DataFrame) -> None:
 
     df.set_index(df["Timestamp_in_UTC"], inplace=True)
     df["Local_Time"] = df["Timestamp_in_UTC"].apply(datetime_from_utc_to_local)
-
+    # df.drop("Timestamp_in_UTC", inplace=True, axis = 1)
     del df["Timestamp_in_UTC"]
     df = df[["Local_Time", "Energy_in_kWh"]]
     df["Energy_in_kWh"] = stof(df["Energy_in_kWh"])
@@ -223,11 +174,8 @@ def add_localtime_to_input(df: pd.DataFrame) -> None:
     check_for_invalids(df)
 
     # make input updateable
-    cursor = CONN.cursor()
-    cursor.execute("DELETE FROM input")
-    CONN.commit()
-
-    write_to_db(df, "input", indexname='Timestamp_in_UTC')
+    sql_handler.execute_query("DELETE FROM input")
+    sql_handler.write_from_DF(df, "input", idxname='Timestamp_in_UTC')
 
 
 def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
@@ -275,23 +223,6 @@ def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
 
-def execute_query(sql: str) -> None:
-    '''
-    helper for frameless querys
-
-    Parameters
-    ----------
-    sql : str
-        query to perform
-    '''
-    cursor = CONN.cursor()
-    query = cursor.execute(sql)
-    fetches = query.fetchall()
-    for fetch in fetches:
-        print(fetch)
-    print("done")
-
-
 def yearly_calculation(year: str = "...") -> None:
     '''
     caluclate the yearly Energy consumption and create tables
@@ -301,7 +232,8 @@ def yearly_calculation(year: str = "...") -> None:
     year : str
         year of interest
     '''
-    year_in_GWh = pd.read_sql("SELECT Energy_in_kWh FROM input", CONN)
+    year_in_GWh = sql_handler.execute_df_query("SELECT Energy_in_kWh FROM input")
+    # year_in_GWh = pd.read_sql("SELECT Energy_in_kWh FROM input", CONN)
     sum = year_in_GWh["Energy_in_kWh"].sum()
     sum = round(sum / 1000, 2)
 
@@ -315,19 +247,17 @@ def yearly_calculation(year: str = "...") -> None:
                 index=True,
                 sep=';'
             )
-
-    write_to_db(year_in_GWh, "YearlyConsumption", indexname="Year")
+    sql_handler.write_from_DF(year_in_GWh, "YearlyConsumption", idxname="Year")
 
 
 def monthly_calculation() -> None:
     '''
     calculate the monthly indicators and create tables
     '''
-    month_in_MWh = pd.read_sql(
+    month_in_MWh = sql_handler.execute_df_query(
         "SELECT Timestamp_in_UTC, Energy_in_kWh FROM input",
-        CONN,
         index_col="Timestamp_in_UTC",
-        parse_dates=["Timestamp_in_UTC"]
+        parse_dates="Timestamp_in_UTC"
     )
 
     monthly_maximum(month_in_MWh)
@@ -349,8 +279,7 @@ def monthly_calculation() -> None:
                 index=True,
                 sep=';'
             )
-
-    write_to_db(month_in_MWh, "MonthlyConsumption", indexname="Month")
+    sql_handler.write_from_DF(month_in_MWh, "MonthlyConsumption", idxname="Month")
 
 
 def monthly_maximum(frame: pd.DataFrame) -> None:
@@ -374,8 +303,7 @@ def monthly_maximum(frame: pd.DataFrame) -> None:
                 sep=';',
                 index=True
             )
-
-    write_to_db(month_max, "MaxEnergyPerMonth", indexname="Hours")
+    sql_handler.write_from_DF(month_max, "MaxEnergyPerMonth", idxname="Hours")
 
 
 def calculate_KPIs(year: str) -> None:
@@ -405,11 +333,10 @@ def create_weekday_table(country: str = "DE") -> pd.DataFrame:
     pd.DataFrame
         weekday/holiday added Dataframe
     '''
-    df = pd.read_sql(
+    df = sql_handler.execute_df_query(
         "SELECT Timestamp_in_UTC,Energy_in_kWh FROM input",
-        CONN,
-        index_col=["Timestamp_in_UTC"],
-        parse_dates=["Timestamp_in_UTC"]
+        index_col="Timestamp_in_UTC",
+        parse_dates="Timestamp_in_UTC"
     )
 
     df["weekday"] = df.index.day % 6
@@ -431,7 +358,7 @@ def create_weekday_table(country: str = "DE") -> pd.DataFrame:
 
     holiday_hours.set_index(holiday_hours[0], inplace=True)
     idxs = df.index.isin(holiday_hours.index)
-    df.loc[idxs, ["weekday"]] = "holiday"
+    df.loc[idxs, ["weekday"]] = "Holiday"
 
     return df
 
@@ -471,38 +398,48 @@ def median_for_ReferenceDays(df: pd.DataFrame) -> None:
         output as ReferenceDays
     '''
 
-    remap = {'Monday': 'workday',
-             'Tuesday': 'workday',
-             'Wednesday': 'workday',
-             'Thursday': 'workday',
-             'Friday': 'workday',
+    remap = {'Monday': 'Workday',
+             'Tuesday': 'Workday',
+             'Wednesday': 'Workday',
+             'Thursday': 'Workday',
+             'Friday': 'Workday',
              'Saturday': 'Saturday',
-             'Sunday': 'holiday',
-             'holiday': 'holiday'
+             'Sunday': 'Holiday',
+             'Holiday': 'Holiday'
              }
 
+    work_days = pd.DataFrame()
+    holidays = pd.DataFrame()
+    saturdays = pd.DataFrame()
+
+    days = [work_days, holidays, saturdays]
+
     df["weekday"] = df["weekday"].apply(lambda day: remap[day])
-    work_days = df[df["weekday"] == 'workday']
-    holidays = df[df["weekday"] == 'holiday']
-    saturdays = df[df["weekday"] == 'Saturday']
 
-    work_days = format_ReferenceDay(
-        work_days,
-        new_col_name='Workdays_median_in_kWh'
-    )
-    holidays = format_ReferenceDay(
-        holidays,
-        new_col_name='Holidays_median_in_kWh'
-    )
-    saturdays = format_ReferenceDay(
-        saturdays,
-        new_col_name='Saturdays_median_in_kWh'
-    )
+    for i, desc in enumerate(["Workday", "Holiday", "Saturday"]):
+        days[i] = df[df["weekday"] == desc]
+        days[i] = format_ReferenceDay(
+            days[i], desc + 's_median_in_kWh'
+        )
 
-    combined_ReferenceDays = pd.concat(
-        [work_days, holidays, saturdays],
-        axis=1
-    )
+    # work_days = df[df["weekday"] == 'Workday']
+    # holidays = df[df["weekday"] == 'holiday']
+    # saturdays = df[df["weekday"] == 'Saturday']
+
+    # work_days = format_ReferenceDay(
+    #    work_days,
+    #    new_col_name='Workdays_median_in_kWh'
+    # )
+    # holidays = format_ReferenceDay(
+    #    holidays,
+    #    new_col_name='Holidays_median_in_kWh'
+    # )
+    # saturdays = format_ReferenceDay(
+    #    saturdays,
+    #    new_col_name='Saturdays_median_in_kWh'
+    # )
+
+    combined_ReferenceDays = pd.concat(days, axis=1)
 
     if USE_CSV:
         if not Path.exists(OUTPUT_DIR / "median_Referencedays.csv"):
@@ -512,10 +449,11 @@ def median_for_ReferenceDays(df: pd.DataFrame) -> None:
                 decimal='.'
             )
 
-    write_to_db(combined_ReferenceDays,
-                "MedianReferenceDays",
-                indexname="Hours"
-                )
+    sql_handler.write_from_DF(
+        combined_ReferenceDays,
+        "MedianReferenceDays",
+        idxname="Hours"
+    )
 
 
 def format_ReferenceDay(frame: pd.DataFrame,
@@ -576,43 +514,53 @@ def plot_ReferenceDay_boxplots(year: str) -> None:
     year : str
         year of interest
     '''
-    data = pd.read_sql(
+    data = sql_handler.execute_df_query(
         "SELECT * FROM MedianReferenceDays",
-        CONN,
-        index_col=["Hours"]
+        index_col="Hours"
     )
 
-    input = pd.read_sql(
+    input = sql_handler.execute_df_query(
         "SELECT * FROM input",
-        CONN,
-        index_col=["Timestamp_in_UTC"],
-        parse_dates=["Timestamp_in_UTC"]
+        index_col="Timestamp_in_UTC",
+        parse_dates="Timestamp_in_UTC"
     )
 
-    input = input["Energy_in_kWh"]
-
-    workdays = data["Workdays_median_in_kWh"]
+    Workdays = data["Workdays_median_in_kWh"]
     saturdays = data["Saturdays_median_in_kWh"]
     holidays = data["Holidays_median_in_kWh"]
+    input = input["Energy_in_kWh"]
 
     fig, axes = plt.subplots(1, 4, sharey=True)
     fig.suptitle(year)
-    axes[0].boxplot(workdays)
-    axes[0].set_xlabel("workdays")
-    axes[0].set_xticks([])
+
+    data = [Workdays, saturdays, holidays, input]
+
+    for i, (desc, day) in enumerate(zip(["Workdays",
+                                         "Saturdays",
+                                         "Holidays",
+                                         "Total"],
+                                        data)):
+        axes[i].boxplot(day)
+        axes[i].set_xlabel(desc)
+        axes[i].set_xticks([])
+
     axes[0].set_ylabel("Energy in kWh")
 
-    axes[1].boxplot(saturdays)
-    axes[1].set_xlabel("saturdays")
-    axes[1].set_xticks([])
+    # axes[0].boxplot(Workdays)
+    # axes[0].set_xlabel("Workdays")
+    # axes[0].set_xticks([])
 
-    axes[2].boxplot(holidays)
-    axes[2].set_xlabel("holidays")
-    axes[2].set_xticks([])
+    # axes[1].boxplot(saturdays)
+    # axes[1].set_xlabel("saturdays")
+    # axes[1].set_xticks([])
 
-    axes[3].boxplot(input)
-    axes[3].set_xlabel("total")
-    axes[3].set_xticks([])
+    # axes[2].boxplot(holidays)
+    # axes[2].set_xlabel("holidays")
+    # axes[2].set_xticks([])
+
+    # axes[3].boxplot(input)
+    # axes[3].set_xlabel("total")
+    # axes[3].set_xticks([])
 
     if not Path.exists(OUTPUT_DIR / "ReferenceDay_boxplots.png"):
         fig.savefig(OUTPUT_DIR / "ReferenceDay_boxplots.png")
@@ -622,11 +570,10 @@ def plot_daily_consumption() -> None:
     '''
     plot the daily Energy consumption over the entire Year
     '''
-    daily = pd.read_sql(
+    daily = sql_handler.execute_df_query(
         "SELECT Timestamp_in_UTC,Energy_in_kWh FROM input",
-        CONN,
-        index_col=["Timestamp_in_UTC"],
-        parse_dates=["Timestamp_in_UTC"]
+        index_col="Timestamp_in_UTC",
+        parse_dates="Timestamp_in_UTC"
     )
 
     daily = daily.resample("D", axis=0).sum()
@@ -650,11 +597,10 @@ def create_Heatmap(year: str) -> None:
     year : str
         year of interest
     '''
-    input = pd.read_sql(
+    input = sql_handler.execute_df_query(
         "SELECT Timestamp_in_UTC,Energy_in_kWh FROM input",
-        CONN,
-        index_col=["Timestamp_in_UTC"],
-        parse_dates=["Timestamp_in_UTC"]
+        index_col="Timestamp_in_UTC",
+        parse_dates="Timestamp_in_UTC"
     )
 
     # values get read row wise , they need to be transposed
@@ -680,7 +626,6 @@ def main():
     '''
 
     build_dir()
-    build_database()
     df = read_input()
     add_localtime_to_input(df)
     calculate_KPIs(YEAR)

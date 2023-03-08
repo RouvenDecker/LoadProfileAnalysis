@@ -8,7 +8,6 @@ import datetime as dt
 import matplotlib.pyplot as plt
 import holidays as hd
 from pathlib import Path
-import sqlite3
 import seaborn as sns
 
 from handling import sqlite_handler
@@ -166,7 +165,6 @@ def add_localtime_to_input(df: pd.DataFrame) -> None:
 
     df.set_index(df["Timestamp_in_UTC"], inplace=True)
     df["Local_Time"] = df["Timestamp_in_UTC"].apply(datetime_from_utc_to_local)
-    # df.drop("Timestamp_in_UTC", inplace=True, axis = 1)
     del df["Timestamp_in_UTC"]
     df = df[["Local_Time", "Energy_in_kWh"]]
     df["Energy_in_kWh"] = stof(df["Energy_in_kWh"])
@@ -233,7 +231,6 @@ def yearly_calculation(year: str = "...") -> None:
         year of interest
     '''
     year_in_GWh = sql_handler.execute_df_query("SELECT Energy_in_kWh FROM input")
-    # year_in_GWh = pd.read_sql("SELECT Energy_in_kWh FROM input", CONN)
     sum = year_in_GWh["Energy_in_kWh"].sum()
     sum = round(sum / 1000, 2)
 
@@ -422,23 +419,6 @@ def median_for_ReferenceDays(df: pd.DataFrame) -> None:
             days[i], desc + 's_median_in_kWh'
         )
 
-    # work_days = df[df["weekday"] == 'Workday']
-    # holidays = df[df["weekday"] == 'holiday']
-    # saturdays = df[df["weekday"] == 'Saturday']
-
-    # work_days = format_ReferenceDay(
-    #    work_days,
-    #    new_col_name='Workdays_median_in_kWh'
-    # )
-    # holidays = format_ReferenceDay(
-    #    holidays,
-    #    new_col_name='Holidays_median_in_kWh'
-    # )
-    # saturdays = format_ReferenceDay(
-    #    saturdays,
-    #    new_col_name='Saturdays_median_in_kWh'
-    # )
-
     combined_ReferenceDays = pd.concat(days, axis=1)
 
     if USE_CSV:
@@ -545,22 +525,6 @@ def plot_ReferenceDay_boxplots(year: str) -> None:
         axes[i].set_xticks([])
 
     axes[0].set_ylabel("Energy in kWh")
-
-    # axes[0].boxplot(Workdays)
-    # axes[0].set_xlabel("Workdays")
-    # axes[0].set_xticks([])
-
-    # axes[1].boxplot(saturdays)
-    # axes[1].set_xlabel("saturdays")
-    # axes[1].set_xticks([])
-
-    # axes[2].boxplot(holidays)
-    # axes[2].set_xlabel("holidays")
-    # axes[2].set_xticks([])
-
-    # axes[3].boxplot(input)
-    # axes[3].set_xlabel("total")
-    # axes[3].set_xticks([])
 
     if not Path.exists(OUTPUT_DIR / "ReferenceDay_boxplots.png"):
         fig.savefig(OUTPUT_DIR / "ReferenceDay_boxplots.png")

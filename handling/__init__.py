@@ -21,15 +21,40 @@ class sqlite_handler:
                 self._Connector.commit()
 
     def _is_empty(self, table_name : str) -> bool:
+        '''
+        check if the given table is empty
+
+        Parameters
+        ----------
+        table_name : str
+            table to check
+
+        Returns
+        -------
+        bool
+
+        '''
         cursor = self._Connector.cursor()
         fetch = cursor.execute(f'SELECT COUNT(*) FROM {table_name}')
         return True if fetch.fetchone() == (0,) else False
 
     def write_from_DF(
-            self, frame: pd.DataFrame,
+            self,
+            frame: pd.DataFrame,
             table: str,
             idxname: str = "") -> None:
+        '''
+        write to database from DataFrame
 
+        Parameters
+        ----------
+        frame : pd.DataFrame
+            Frame to write from
+        table : str
+            table to write in
+        idxname : str, optional
+            give a index name, by default ""
+        '''
         if self._is_empty(table):
             frame.to_sql(
                 table,
@@ -42,6 +67,21 @@ class sqlite_handler:
             print("table already written, override is disabled")
 
     def execute_query(self, sql: str, output : bool = False) -> str | None:
+        '''
+        perform a query
+
+        Parameters
+        ----------
+        sql : str
+            query
+        output : bool, optional
+            printed output if there are fetches, by default False
+
+        Returns
+        -------
+        str | None
+            fetched output
+        '''
         cursor = self._Connector.cursor()
         query = cursor.execute(sql)
         fetches = query.fetchall()
@@ -55,7 +95,23 @@ class sqlite_handler:
                          sql: str,
                          index_col: str | None = None,
                          parse_dates: str | None = None) -> pd.DataFrame:
+        '''
+        query the database and generate a Dataframe from it
 
+        Parameters
+        ----------
+        sql : str
+            query
+        index_col : str | None, optional
+            name for the generated index column, by default None
+        parse_dates : str | None, optional
+            parse the dates , by default None
+
+        Returns
+        -------
+        pd.DataFrame
+            resulting DataFrame
+        '''
         if index_col is not None and parse_dates is not None:
             df = pd.read_sql(sql, self._Connector,
                              index_col=index_col,

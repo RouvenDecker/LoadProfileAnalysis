@@ -45,11 +45,10 @@ class sqlite_handler:
         cursor = self._Connector.cursor()
         query = cursor.execute(sql)
         fetches = query.fetchall()
-        if output:  # option still untested
-            output_str : str = ""
+        if output:
             for fetch in fetches:
-                output_str += fetch
-            return output_str
+                fetch = str(fetch)
+                print(fetch[1:-1])
         return None
 
     def execute_df_query(self,

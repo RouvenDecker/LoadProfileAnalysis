@@ -15,5 +15,9 @@ mkdir data
 rm -rf output  
 mkdir output  
 
+for extendet Output:  
+--csv True  
+--year 2022 
+
 tool will be updated on :  
 [https://github.com/RouvenDecker/LoadProfileAnalysis]  

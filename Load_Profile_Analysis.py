@@ -600,8 +600,6 @@ def main():
     create_Heatmap(YEAR)
     print("Done")
 
-    sql_handler.execute_query("SELECT * FROM input", output=True)
-
 
 if __name__ == "__main__":
     main()

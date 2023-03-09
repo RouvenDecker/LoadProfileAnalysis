@@ -65,8 +65,3 @@ class sqlite_handler:
         else:
             df = pd.read_sql(sql, self._Connector)
             return df
-
-
-class csv_handler:
-    def __init__(self):
-        pass

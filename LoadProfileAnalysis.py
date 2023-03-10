@@ -23,20 +23,11 @@ parser.add_argument(
     required=False
 )
 
-parser.add_argument(
-    "--year",
-    help="want to add the Year for output diagramms? (--year YYYY)",
-    type=str,
-    required=False
-)
 
 args = parser.parse_args()
 USE_CSV: bool = args.csv
-YEAR: str = args.year
-if args.year is not None:
-    YEAR = args.year
-else:
-    YEAR = "unknown"
+
+YEAR: str = ""
 
 # used directorys
 CWD = Path.cwd()
@@ -147,6 +138,7 @@ def read_input() -> pd.DataFrame:
         parse_dates=["Timestamp in UTC"],
         date_parser=lambda stamp: dt.datetime.strptime(stamp, '%d.%m.%Y %H:%M')
     )
+
     return df
 
 
@@ -175,6 +167,8 @@ def add_localtime_to_input(df: pd.DataFrame) -> None:
     df = df[["Local_Time", "Energy_in_kWh"]]
     df["Energy_in_kWh"] = stof(df["Energy_in_kWh"])
 
+    global YEAR
+    YEAR = df.iloc[0, 0].year
     check_for_invalids(df)
 
     # make input updateable

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from sys import exit
 import time
 import argparse
@@ -9,6 +10,8 @@ import matplotlib.pyplot as plt
 import holidays as hd
 from pathlib import Path
 import seaborn as sns
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator
 
 from handling import sqlite_handler
 
@@ -30,7 +33,10 @@ parser.add_argument(
 args = parser.parse_args()
 USE_CSV: bool = args.csv
 YEAR: str = args.year
-
+if args.year is not None:
+    YEAR = args.year
+else:
+    YEAR = "unknown"
 
 # used directorys
 CWD = Path.cwd()
@@ -221,7 +227,7 @@ def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
 
-def yearly_calculation(year: str = "...") -> None:
+def yearly_calculation() -> None:
     '''
     caluclate the yearly Energy consumption and create tables
 
@@ -234,7 +240,7 @@ def yearly_calculation(year: str = "...") -> None:
     sum = year_in_GWh["Energy_in_kWh"].sum()
     sum = round(sum / 1000, 2)
 
-    year_in_GWh = pd.DataFrame(data={"Consumption_in_GWh": sum}, index=[year])
+    year_in_GWh = pd.DataFrame(data={"Consumption_in_GWh": sum}, index=[YEAR])
     year_in_GWh.index.name = "Year"
 
     if USE_CSV:
@@ -303,7 +309,7 @@ def monthly_maximum(frame: pd.DataFrame) -> None:
     sql_handler.write_from_DF(month_max, "MaxEnergyPerMonth", idxname="Hours")
 
 
-def calculate_KPIs(year: str) -> None:
+def calculate_KPIs() -> None:
     '''
     calculate the Key Performance Indicator
 
@@ -312,7 +318,7 @@ def calculate_KPIs(year: str) -> None:
     year : str
        year of interest
     '''
-    yearly_calculation(year)
+    yearly_calculation()
     monthly_calculation()
 
 
@@ -483,7 +489,7 @@ def pretty_time_h(time: int) -> str:
         return str(time) + ':00'
 
 
-def plot_ReferenceDay_boxplots(year: str) -> None:
+def plot_ReferenceDay_boxplots() -> None:
     '''
     plot 1 Boxplot per Reference Day and the
     comparisson Boxplot over the entire Year
@@ -511,7 +517,7 @@ def plot_ReferenceDay_boxplots(year: str) -> None:
     input = input["Energy_in_kWh"]
 
     fig, axes = plt.subplots(1, 4, sharey=True)
-    fig.suptitle(year)
+    fig.suptitle(f"Year: {YEAR}")
 
     data = [Workdays, saturdays, holidays, input]
 
@@ -528,6 +534,7 @@ def plot_ReferenceDay_boxplots(year: str) -> None:
 
     if not Path.exists(OUTPUT_DIR / "ReferenceDay_boxplots.png"):
         fig.savefig(OUTPUT_DIR / "ReferenceDay_boxplots.png")
+    plt.close(fig)
 
 
 def plot_daily_consumption() -> None:
@@ -542,15 +549,17 @@ def plot_daily_consumption() -> None:
 
     daily = daily.resample("D", axis=0).sum()
 
-    fig, ax = plt.subplots()
-    ax.plot(daily.index, daily["Energy_in_kWh"])
-    ax.set_ylabel("EnergyConsumption_in_kWh")
+    fig, ax = plt.subplots(facecolor='lightgrey',)
+    ax.plot(daily.index, daily["Energy_in_kWh"], color='red')
+    ax.set_ylabel("Energy in kWh")
+    ax.set_title(f"Year: {YEAR}")
 
     if not Path.exists(OUTPUT_DIR / "DailyEnergyConsumption.png"):
         fig.savefig(OUTPUT_DIR / "DailyEnergyConsumption.png")
+    plt.close(fig)
 
 
-def create_Heatmap(year: str) -> None:
+def create_Heatmap() -> None:
     '''
     create Heatmap for Energy consumption
     x - axis : Days
@@ -571,17 +580,44 @@ def create_Heatmap(year: str) -> None:
     values = input.values.reshape(365, 24)
     values = values.T
 
-    hours = [y for y in range(0, 24)]
-    days = [x for x in range(1, 366)]
+    hours = np.array([y for y in range(0, 24)])
+    days = np.array([x for x in range(1, 366)])
     grid = pd.DataFrame(index=hours, columns=days, data=values)
 
+    create_3D_Heatmap(grid, days, hours)
+
+    # 2 D HeatMap
     fig, ax = plt.subplots()
-    fig.suptitle(year)
-    sns.heatmap(grid, robust=True, cbar_kws={"label": "Energy_in_kWh"})
+    fig.suptitle(f"Year: {YEAR}")
+    sns.heatmap(grid, robust=True, cbar_kws={"label": "Energy in  kWh"})
     ax.set(xlabel="Days", ylabel="Hours")
 
     if not Path.exists(OUTPUT_DIR / "HeatMap.png"):
         fig.savefig(OUTPUT_DIR / "HeatMap.png")
+    plt.close(fig)
+
+
+def create_3D_Heatmap(grid: pd.DataFrame, x: np.array, y: np.array) -> None:
+    values = grid.to_numpy()
+    X, Y = np.meshgrid(x, y)
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+
+    surf = ax.plot_surface(X,
+                           Y,
+                           values,
+                           cmap='inferno',
+                           antialiased=False)
+    ax.text(
+        -250, 10, 150,
+        f"Year: {YEAR}\nx_axis: Days\ny_axis: Hours\nz_axis: Energy in kWh",
+        fontsize=14
+    )
+    ax.zaxis.set_major_locator(LinearLocator(10))
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+
+    if not Path.exists(OUTPUT_DIR / "HeatMap3D.png"):
+        fig.savefig(fname=OUTPUT_DIR / "HeatMap3D.png")
+    plt.close(fig)
 
 
 def main():
@@ -592,12 +628,12 @@ def main():
     build_dir()
     df = read_input()
     add_localtime_to_input(df)
-    calculate_KPIs(YEAR)
+    calculate_KPIs()
     weekday_table = create_weekday_table()
     median_for_ReferenceDays(weekday_table)
-    plot_ReferenceDay_boxplots(YEAR)
+    plot_ReferenceDay_boxplots()
     plot_daily_consumption()
-    create_Heatmap(YEAR)
+    create_Heatmap()
     print("Done")
 
 

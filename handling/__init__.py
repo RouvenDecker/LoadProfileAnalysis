@@ -5,7 +5,8 @@ from pathlib import Path
 
 class sqlite_handler:
     def __init__(
-            self, db_name: str,
+            self,
+            db_name: str,
             source : Path,
             build_file: Path | None):
 
@@ -66,7 +67,7 @@ class sqlite_handler:
         else:
             print("table already written, override is disabled")
 
-    def execute_query(self, sql: str, output : bool = False) -> str | None:
+    def execute_query(self, sql: str, output : bool = False) -> None:
         '''
         perform a query
 
@@ -77,10 +78,6 @@ class sqlite_handler:
         output : bool, optional
             printed output if there are fetches, by default False
 
-        Returns
-        -------
-        str | None
-            fetched output
         '''
         cursor = self._Connector.cursor()
         query = cursor.execute(sql)
@@ -89,7 +86,6 @@ class sqlite_handler:
             for fetch in fetches:
                 fetch = str(fetch)
                 print(fetch[1:-1])
-        return None
 
     def execute_df_query(self,
                          sql: str,

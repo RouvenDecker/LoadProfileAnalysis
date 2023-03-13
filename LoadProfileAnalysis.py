@@ -10,10 +10,15 @@ import matplotlib.pyplot as plt
 import holidays as hd
 from pathlib import Path
 import seaborn as sns
-from matplotlib import cm
 from matplotlib.ticker import LinearLocator
+from multiprocessing import Process
+from threading import Thread
 
 from handling import sqlite_handler
+from timing import timer
+
+t1 = timer()
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -591,7 +596,19 @@ def create_Heatmap() -> None:
     plt.close(fig)
 
 
-def create_3D_Heatmap(grid: pd.DataFrame, x: np.array, y: np.array) -> None:
+def create_3D_Heatmap(grid: pd.DataFrame, x: np.ndarray, y: np.ndarray) -> None:
+    '''
+    create a 3D Heatmap
+
+    Parameters
+    ----------
+    grid : pd.DataFrame
+        grid values (z)
+    x : np.ndarray
+        x values
+    y : np.ndarray
+        y values
+    '''
     values = grid.to_numpy()
     X, Y = np.meshgrid(x, y)
     fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
@@ -618,17 +635,35 @@ def main():
     '''
     Script to Analyse a Yearly Energy Load Profile.
     '''
-
     build_dir()
     df = read_input()
     add_localtime_to_input(df)
-    calculate_KPIs()
+
+    p0 = Process(target=calculate_KPIs, name='p0')
+    p0.start()
+
     weekday_table = create_weekday_table()
     median_for_ReferenceDays(weekday_table)
-    plot_ReferenceDay_boxplots()
-    plot_daily_consumption()
-    create_Heatmap()
-    print("Done")
+
+    p1 = Process(target=plot_ReferenceDay_boxplots, name='p1')
+    p1.start()
+
+    p2 = Process(target=plot_daily_consumption, name='p2')
+    p2.start()
+
+    p3 = Process(target=create_Heatmap, name='p3')
+    p3.start()
+
+    processes = [p0, p1, p2, p3]
+
+    for p in processes:
+        p.join()
+
+    for p in processes:
+        p.close()
+
+    t1.stop()
+    print(f"Done, process time :{t1.duration()} s")
 
 
 if __name__ == "__main__":

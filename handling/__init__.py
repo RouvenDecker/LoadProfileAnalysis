@@ -4,11 +4,10 @@ from pathlib import Path
 
 
 class sqlite_handler:
-    def __init__(
-            self,
-            db_name: str,
-            source : Path,
-            build_file: Path | None):
+    def __init__(self,
+                 db_name: str,
+                 source : Path,
+                 build_file: Path | None):
 
         self._db_name = db_name
         self._source_path = source

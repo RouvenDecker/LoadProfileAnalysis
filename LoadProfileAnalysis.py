@@ -12,7 +12,6 @@ from pathlib import Path
 import seaborn as sns
 from matplotlib.ticker import LinearLocator
 from multiprocessing import Process
-from threading import Thread
 
 from handling import sqlite_handler
 from timing import timer
@@ -32,7 +31,7 @@ parser.add_argument(
 args = parser.parse_args()
 USE_CSV: bool = args.csv
 
-YEAR: str = ""
+YEAR: str = "2022"
 
 # used directorys
 CWD = Path.cwd()
@@ -50,14 +49,10 @@ sql_handler = sqlite_handler("database.db",
 if not Path.exists(WORKING_DATA):
     Path.mkdir(WORKING_DATA, exist_ok=True)
 
-DAY_MAPPING = {0: 'Monday',
-               1: 'Tuesday',
-               2: 'Wednesday',
-               3: 'Thursday',
-               4: 'Friday',
-               5: 'Saturday',
-               6: 'Sunday'
-               }
+
+DAYS = ['Monday', 'Tuesday', 'Wednesday',
+        'Thursday', 'Friday', 'Saturday', 'Sunday']
+DAY_MAPPING = {i: val for i, val in zip(np.arange(7), DAYS)}
 
 
 def build_dir() -> None:
@@ -143,23 +138,17 @@ def read_input() -> pd.DataFrame:
         parse_dates=["Timestamp in UTC"],
         date_parser=lambda stamp: dt.datetime.strptime(stamp, '%d.%m.%Y %H:%M')
     )
-
     return df
 
 
 def add_localtime_to_input(df: pd.DataFrame) -> None:
     '''
-    format the input dataframe and write it in the db
+    format the input dataframe and write it to the db
 
     Parameters
     ----------
     df : pd.DataFrame
         raw input data
-
-    Returns
-    -------
-    pd.DataFrame
-        formated frame
     '''
     df.rename(columns={"Timestamp in UTC": "Timestamp_in_UTC",
                        "Energy in kWh": "Energy_in_kWh"},
@@ -209,7 +198,6 @@ def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
     assert df.shape == (8760, 2), error_msg
 
     if np.sum(df["Energy_in_kWh"] < 0):
-
         error_msg = """
             negative Values in InputData.\n
             Do u want to change invalids to 0 an proceed?\n
@@ -219,23 +207,15 @@ def check_for_invalids(df: pd.DataFrame) -> pd.DataFrame:
         decission = input()
         if decission == "1":
             df.loc[df["Energy_in_kWh"] < 0, ["Energy_in_kWh"]] = 0
-            return df
-        else:
-            return df
-    else:
-        return df
+    return df
 
 
 def yearly_calculation() -> None:
     '''
     caluclate the yearly Energy consumption and create tables
-
-    Parameters
-    ----------
-    year : str
-        year of interest
     '''
-    year_in_GWh = sql_handler.execute_df_query("SELECT Energy_in_kWh FROM input")
+    year_in_GWh = sql_handler.execute_df_query(
+        "SELECT Energy_in_kWh FROM input")
     sum = year_in_GWh["Energy_in_kWh"].sum()
     sum = round(sum / 1000, 2)
 
@@ -281,7 +261,8 @@ def monthly_calculation() -> None:
                 index=True,
                 sep=';'
             )
-    sql_handler.write_from_DF(month_in_MWh, "MonthlyConsumption", idxname="Month")
+    sql_handler.write_from_DF(
+        month_in_MWh, "MonthlyConsumption", idxname="Month")
 
 
 def monthly_maximum(frame: pd.DataFrame) -> None:
@@ -311,11 +292,6 @@ def monthly_maximum(frame: pd.DataFrame) -> None:
 def calculate_KPIs() -> None:
     '''
     calculate the Key Performance Indicator
-
-    Parameters
-    ----------
-    year : str
-       year of interest
     '''
     yearly_calculation()
     monthly_calculation()
@@ -344,7 +320,7 @@ def create_weekday_table(country: str = "DE") -> pd.DataFrame:
     df["weekday"] = df.index.day % 6
     df["weekday"] = df["weekday"].apply(lambda day: DAY_MAPPING[day])
 
-    de_holidays = hd.country_holidays(country, years=2022)
+    de_holidays = hd.country_holidays(country, years=int(YEAR))
 
     # code creates "holiday_hours" containing all hourly holiday timestamps
     # it then updates the info in df
@@ -400,7 +376,7 @@ def median_for_ReferenceDays(df: pd.DataFrame) -> None:
         output as ReferenceDays
     '''
 
-    remap = {'Monday': 'Workday',
+    REMAP = {'Monday': 'Workday',
              'Tuesday': 'Workday',
              'Wednesday': 'Workday',
              'Thursday': 'Workday',
@@ -416,7 +392,7 @@ def median_for_ReferenceDays(df: pd.DataFrame) -> None:
 
     days = [work_days, holidays, saturdays]
 
-    df["weekday"] = df["weekday"].apply(lambda day: remap[day])
+    df["weekday"] = df["weekday"].apply(lambda day: REMAP[day])
 
     for i, desc in enumerate(["Workday", "Holiday", "Saturday"]):
         days[i] = df[df["weekday"] == desc]
@@ -492,12 +468,6 @@ def plot_ReferenceDay_boxplots() -> None:
     '''
     plot 1 Boxplot per Reference Day and the
     comparisson Boxplot over the entire Year
-
-
-    Parameters
-    ----------
-    year : str
-        year of interest
     '''
     data = sql_handler.execute_df_query(
         "SELECT * FROM MedianReferenceDays",
@@ -563,11 +533,6 @@ def create_Heatmap() -> None:
     create Heatmap for Energy consumption
     x - axis : Days
     y - axis : Hours
-
-    Parameters
-    ----------
-    year : str
-        year of interest
     '''
     input = sql_handler.execute_df_query(
         "SELECT Timestamp_in_UTC,Energy_in_kWh FROM input",
@@ -579,8 +544,8 @@ def create_Heatmap() -> None:
     values = input.values.reshape(365, 24)
     values = values.T
 
-    hours = np.array([y for y in range(0, 24)])
-    days = np.array([x for x in range(1, 366)])
+    hours = np.arange(0, 24)
+    days = np.arange(1, 366)
     grid = pd.DataFrame(index=hours, columns=days, data=values)
 
     create_3D_Heatmap(grid, days, hours)
@@ -647,10 +612,8 @@ def main():
 
     p1 = Process(target=plot_ReferenceDay_boxplots, name='p1')
     p1.start()
-
     p2 = Process(target=plot_daily_consumption, name='p2')
     p2.start()
-
     p3 = Process(target=create_Heatmap, name='p3')
     p3.start()
 

@@ -2,7 +2,7 @@
 
 ## calculate a Load Profile for a given Year
 
-#This tool was developed to Visualize Load Profiles e.g: power plants, solar, wind,..
+# This tool was developed to Visualize Load Profiles e.g: power plants, solar, wind,..
 The data is read via a csv-File.
 
 
